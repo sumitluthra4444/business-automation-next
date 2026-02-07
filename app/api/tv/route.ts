@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     // 2) Load queue (queued + arrived only)
     // Expand customer + service via FK embedding
     const queueRes = await fetch(
-      `${supabaseUrl}/rest/v1/queue_entries?shop_id=eq.${shopId}&status=in.(queued,arrived)&select=id,status,created_at,customers(first_name,last_name),services(name)&order=created_at.asc&limit=20`,
+      `${supabaseUrl}/rest/v1/queue_entries?shop_id=eq.${shopId}&status=in.(queued,arrived)&select=id,status,created_at,customers(first_name,last_name),services(name, duration_minutes)&order=created_at.asc&limit=20`,
       { headers, cache: "no-store" }
     );
     const queueJson = await queueRes.json();
