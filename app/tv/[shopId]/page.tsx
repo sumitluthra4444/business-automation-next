@@ -36,7 +36,7 @@ export default function TVPage({ params }: { params: { shopId: string } }) {
   async function load() {
     const res = await fetch(`/api/tv?shopId=${shopId}`, { cache: "no-store" });
     const json = await res.json();
-
+    setBookings(json.bookings || []);
     setQueue(json.queue || []);
     setAds(json.ads || []);
     setSplit(json.tv_left_percent || 70);
