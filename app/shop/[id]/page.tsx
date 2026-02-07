@@ -107,7 +107,7 @@ export default function JoinQueuePage({ params }: { params: { id: string } }) {
       <main style={pageStyle}>
         <div style={{ width: "100%", maxWidth: 520 }}>
           <h2 style={{ fontSize: "1.9rem", marginBottom: 6 }}>
-            You’re in the queue ✅
+            You’re in the queue.
           </h2>
           <p style={{ opacity: 0.8, marginBottom: 18 }}>
             Show this screen at the kiosk to check-in.
