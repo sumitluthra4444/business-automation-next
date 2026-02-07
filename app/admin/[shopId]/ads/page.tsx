@@ -120,7 +120,14 @@ export default function AdsAdminPage({
 
       setTimeout(() => setOk(null), 1800);
     } catch (e: any) {
-      setErr(e?.message || "Unknown error");
+      setErr(
+  typeof e?.message === "string"
+    ? e.message
+    : typeof e === "string"
+    ? e
+    : JSON.stringify(e)
+);
+
     } finally {
       setLoading(false);
     }
@@ -138,7 +145,14 @@ export default function AdsAdminPage({
       if (!res.ok) throw new Error(json?.error || "Failed to update ad");
       await load();
     } catch (e: any) {
-      setErr(e?.message || "Unknown error");
+      setErr(
+  typeof e?.message === "string"
+    ? e.message
+    : typeof e === "string"
+    ? e
+    : JSON.stringify(e)
+);
+
     }
   }
 
