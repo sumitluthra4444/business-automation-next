@@ -27,7 +27,11 @@ export async function GET(request: Request) {
     );
 
     const json = await res.json();
-    if (!res.ok) return NextResponse.json({ error: json }, { status: 500 });
+    if (!res.ok) {
+  const msg = typeof json?.message === "string" ? json.message : JSON.stringify(json);
+  return NextResponse.json({ error: msg }, { status: 500 });
+}
+
 
     return NextResponse.json({
       ok: true,
@@ -69,7 +73,11 @@ export async function POST(request: Request) {
     });
 
     const json = await res.json();
-    if (!res.ok) return NextResponse.json({ error: json }, { status: 500 });
+    if (!res.ok) {
+  const msg = typeof json?.message === "string" ? json.message : JSON.stringify(json);
+  return NextResponse.json({ error: msg }, { status: 500 });
+}
+
 
     return NextResponse.json({
       ok: true,
@@ -107,7 +115,11 @@ export async function PATCH(request: Request) {
     });
 
     const json = await res.json();
-    if (!res.ok) return NextResponse.json({ error: json }, { status: 500 });
+    if (!res.ok) {
+  const msg = typeof json?.message === "string" ? json.message : JSON.stringify(json);
+  return NextResponse.json({ error: msg }, { status: 500 });
+}
+
 
     return NextResponse.json({
       ok: true,
