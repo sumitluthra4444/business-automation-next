@@ -6,6 +6,7 @@ type QueueEntry = {
   id: string;
   status: string;
   created_at: string;
+  eta_minutes: number;
   customer: {
     first_name: string;
     last_name: string;
@@ -76,7 +77,9 @@ export default function TVPage({ params }: { params: { shopId: string } }) {
               <div style={name}>
                 {q.customer.first_name} {q.customer.last_name[0]}
               </div>
-              <div style={service}>{q.service.name}</div>
+              <div style={service}>
+  {q.service.name} • ETA {q.eta_minutes}m
+</div>
             </div>
             <div style={status}>{q.status.toUpperCase()}</div>
           </div>
