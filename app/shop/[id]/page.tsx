@@ -219,7 +219,12 @@ export default function JoinQueuePage({ params }: { params: { id: string } }) {
               ...primaryBtn,
               opacity: canSubmit ? 1 : 0.5
             }}
-            onClick={submit}
+            onClick={() => {
+  const firstService = services?.[0]?.id;
+  if (!firstService) return alert("No services found for this shop");
+  window.location.href = `/shop/${shopId}/book?serviceId=${firstService}`;
+}}
+
           >
             {loading ? "Joining..." : "Join Queue"}
           </button>
