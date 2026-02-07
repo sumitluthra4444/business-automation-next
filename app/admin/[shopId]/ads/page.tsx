@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabase";
 
 
+
 type Ad = {
   id: string;
   title: string;
