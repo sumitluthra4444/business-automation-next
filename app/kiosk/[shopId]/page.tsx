@@ -69,7 +69,7 @@ export default function KioskPage({
         {success && (
           <div style={successBox}>
             <div style={{ fontSize: "1.4rem", fontWeight: 900 }}>
-              ✅ Checked in!
+              Checked in!
             </div>
             <div style={{ opacity: 0.85, marginTop: 8 }}>
               Queue Ref:{" "}
