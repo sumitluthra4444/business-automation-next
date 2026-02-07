@@ -25,9 +25,20 @@ export default function AdminDashboard({
 
   async function load() {
     const res = await fetch(`/api/admin/dashboard?shopId=${shopId}`, {
-      cache: "no-store"
-    });
-    const json = await res.json();
+  cache: "no-store"
+});
+
+const text = await res.text();
+let json: any;
+try {
+  json = JSON.parse(text);
+} catch {
+  throw new Error("API returned HTML (route missing or server error). Check /api/admin/dashboard");
+}
+
+if (!res.ok) throw new Error(json?.error || "Failed to load dashboard");
+setData(json);
+
     if (!res.ok) throw new Error(json?.error || "Failed to load dashboard");
     setData(json);
   }
