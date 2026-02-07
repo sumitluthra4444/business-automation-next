@@ -125,20 +125,22 @@ export default function ShopPage({ params }: { params: { id: string } }) {
               </div>
 
               <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
-                <button
-                  style={{
-                    background: "rgba(77,163,255,0.20)",
-                    border: "1px solid rgba(77,163,255,0.40)",
-                    color: "#cfe9ff",
-                    padding: "10px 14px",
-                    borderRadius: 14,
-                    fontWeight: 700,
-                    cursor: "pointer"
-                  }}
-                  onClick={() => alert("Next step: Join Queue flow")}
-                >
-                  Join Queue
-                </button>
+                {/* ✅ Join Queue now navigates to your Join page */}
+                <a href={`/shop/${shopId}/join`} style={{ textDecoration: "none" }}>
+                  <button
+                    style={{
+                      background: "rgba(77,163,255,0.20)",
+                      border: "1px solid rgba(77,163,255,0.40)",
+                      color: "#cfe9ff",
+                      padding: "10px 14px",
+                      borderRadius: 14,
+                      fontWeight: 700,
+                      cursor: "pointer"
+                    }}
+                  >
+                    Join Queue
+                  </button>
+                </a>
 
                 <button
                   style={{
