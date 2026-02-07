@@ -191,7 +191,7 @@ export default function ShopPage({ params }: { params: { id: string } }) {
       if (!firstName.trim() || !lastName.trim() || !phone.trim())
         throw new Error("Please enter First name, Last name and Phone.");
 
-      const res = await fetch(`/api/queue`, {
+      const res = await fetch(`/api/join-queue`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
