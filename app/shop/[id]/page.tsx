@@ -1,4 +1,6 @@
-import { supabase } from "../../../lib/supabase";
+"use client";
+
+import { useEffect, useState } from "react";
 
 type Service = {
   id: string;
@@ -13,26 +15,43 @@ type Shop = {
   suburb: string;
 };
 
-export default async function ShopPage({
-  params
-}: {
-  params: { id: string };
-}) {
+export default function ShopPage({ params }: { params: { id: string } }) {
   const shopId = params.id;
 
-  const { data: shop, error: shopError } = await supabase
-    .from("shops")
-    .select("id,name,suburb")
-    .eq("id", shopId)
-    .single();
+  const [shop, setShop] = useState<Shop | null>(null);
+  const [services, setServices] = useState<Service[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
 
-  const { data: services, error: serviceError } = await supabase
-    .from("services")
-    .select("id,name,duration_minutes,price")
-    .eq("shop_id", shopId)
-    .order("duration_minutes", { ascending: true });
+  useEffect(() => {
+    let cancelled = false;
 
-  const error = shopError || serviceError;
+    async function load() {
+      try {
+        setLoading(true);
+        setErr(null);
+
+        const res = await fetch(`/api/shop?id=${shopId}`, { cache: "no-store" });
+        const json = await res.json();
+
+        if (!res.ok) throw new Error(json?.error || "Failed to load shop");
+
+        if (!cancelled) {
+          setShop(json.shop);
+          setServices(json.services || []);
+        }
+      } catch (e: any) {
+        if (!cancelled) setErr(e?.message || "Unknown error");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [shopId]);
 
   return (
     <main
@@ -60,7 +79,20 @@ export default async function ShopPage({
           ← Back
         </a>
 
-        {error && (
+        {loading && (
+          <div
+            style={{
+              background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.10)",
+              padding: 16,
+              borderRadius: 18
+            }}
+          >
+            Loading shop...
+          </div>
+        )}
+
+        {err && (
           <div
             style={{
               background: "rgba(255,0,0,0.12)",
@@ -70,11 +102,11 @@ export default async function ShopPage({
               marginBottom: 16
             }}
           >
-            <b>Error:</b> {error.message}
+            <b>Error:</b> {err}
           </div>
         )}
 
-        {shop && (
+        {!loading && shop && (
           <>
             <div
               style={{
@@ -86,10 +118,10 @@ export default async function ShopPage({
               }}
             >
               <div style={{ fontSize: "1.6rem", fontWeight: 750 }}>
-                {(shop as Shop).name}
+                {shop.name}
               </div>
               <div style={{ opacity: 0.75, marginTop: 6 }}>
-                {(shop as Shop).suburb} • Sydney Metro
+                {shop.suburb} • Sydney Metro
               </div>
 
               <div style={{ marginTop: 14, display: "flex", gap: 10 }}>
@@ -103,10 +135,7 @@ export default async function ShopPage({
                     fontWeight: 700,
                     cursor: "pointer"
                   }}
-                  onClick={() => {
-                    // Placeholder – next step we build Join Queue page
-                    alert("Next step: Join Queue flow");
-                  }}
+                  onClick={() => alert("Next step: Join Queue flow")}
                 >
                   Join Queue
                 </button>
@@ -121,9 +150,7 @@ export default async function ShopPage({
                     fontWeight: 700,
                     cursor: "pointer"
                   }}
-                  onClick={() => {
-                    alert("Next step: Booking flow");
-                  }}
+                  onClick={() => alert("Next step: Booking flow")}
                 >
                   Book Appointment
                 </button>
@@ -135,7 +162,7 @@ export default async function ShopPage({
             </div>
 
             <div style={{ display: "grid", gap: 12 }}>
-              {(services as Service[] | null)?.map((svc) => (
+              {services.map((svc) => (
                 <div
                   key={svc.id}
                   style={{
