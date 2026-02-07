@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 
-function headers() {
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+function headers(preferReturn = false) {
   return {
-    apikey: anonKey,
-    Authorization: `Bearer ${anonKey}`,
+    apikey: ANON,
+    Authorization: `Bearer ${ANON}`,
     "Content-Type": "application/json",
-    Prefer: "return=representation"
+    ...(preferReturn ? { Prefer: "return=representation" } : {})
   };
 }
-
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
 export async function GET(request: Request) {
   try {
@@ -22,12 +22,15 @@ export async function GET(request: Request) {
     }
 
     const res = await fetch(
-      `${SUPABASE_URL}/rest/v1/ads?shop_id=eq.${shopId}&select=id,title,image_url,is_active,created_at&order=created_at.desc`,
+      `${SUPABASE_URL}/rest/v1/ads?shop_id=eq.${shopId}&select=id,title,image_url,video_url,is_active,created_at&order=created_at.desc`,
       { headers: headers(), cache: "no-store" }
     );
 
     const json = await res.json();
-    if (!res.ok) return NextResponse.json({ error: json }, { status: 500 });
+    if (!res.ok) {
+      const msg = typeof json?.message === "string" ? json.message : JSON.stringify(json);
+      return NextResponse.json({ error: msg }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true, ads: Array.isArray(json) ? json : [] });
   } catch (e: any) {
@@ -41,24 +44,29 @@ export async function POST(request: Request) {
     const shopId = String(body.shopId || "").trim();
     const title = String(body.title || "").trim();
     const imageUrl = String(body.imageUrl || "").trim();
+    const videoUrl = String(body.videoUrl || "").trim();
 
-    if (!shopId || (!title && !imageUrl)) {
+    if (!shopId || (!title && !imageUrl && !videoUrl)) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
     const res = await fetch(`${SUPABASE_URL}/rest/v1/ads`, {
       method: "POST",
-      headers: headers(),
+      headers: headers(true),
       body: JSON.stringify({
         shop_id: shopId,
         title: title || null,
         image_url: imageUrl || null,
+        video_url: videoUrl || null,
         is_active: true
       })
     });
 
     const json = await res.json();
-    if (!res.ok) return NextResponse.json({ error: json }, { status: 500 });
+    if (!res.ok) {
+      const msg = typeof json?.message === "string" ? json.message : JSON.stringify(json);
+      return NextResponse.json({ error: msg }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true, ad: Array.isArray(json) ? json[0] : json });
   } catch (e: any) {
@@ -78,12 +86,15 @@ export async function PATCH(request: Request) {
 
     const res = await fetch(`${SUPABASE_URL}/rest/v1/ads?id=eq.${id}`, {
       method: "PATCH",
-      headers: headers(),
+      headers: headers(true),
       body: JSON.stringify({ is_active })
     });
 
     const json = await res.json();
-    if (!res.ok) return NextResponse.json({ error: json }, { status: 500 });
+    if (!res.ok) {
+      const msg = typeof json?.message === "string" ? json.message : JSON.stringify(json);
+      return NextResponse.json({ error: msg }, { status: 500 });
+    }
 
     return NextResponse.json({ ok: true, ad: Array.isArray(json) ? json[0] : json });
   } catch (e: any) {
