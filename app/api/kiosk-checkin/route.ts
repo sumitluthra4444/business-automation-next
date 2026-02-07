@@ -77,7 +77,7 @@ export async function POST(request: Request) {
         method: "PATCH",
         headers,
         body: JSON.stringify({
-          status: "checked_in",
+          status: "arrived",
           checked_in_at: new Date().toISOString()
         })
       }
