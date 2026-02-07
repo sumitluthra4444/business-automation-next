@@ -27,35 +27,34 @@ export async function GET(request: Request) {
     const shop = Array.isArray(shopJson) ? shopJson[0] : null;
 
     // 2) Load queue (queued + arrived only)
-    // Expand customer + service via FK embedding
     const queueRes = await fetch(
-      `${supabaseUrl}/rest/v1/queue_entries?shop_id=eq.${shopId}&status=in.(queued,arrived)&select=id,status,created_at,customers(first_name,last_name),services(name, duration_minutes)&order=created_at.asc&limit=20`,
+      `${supabaseUrl}/rest/v1/queue_entries?shop_id=eq.${shopId}&status=in.(queued,arrived)&select=id,status,created_at,customers(first_name,last_name),services(name,duration_minutes)&order=created_at.asc&limit=20`,
       { headers, cache: "no-store" }
     );
     const queueJson = await queueRes.json();
 
-const queueRaw = Array.isArray(queueJson) ? queueJson : [];
+    const queueRaw = Array.isArray(queueJson) ? queueJson : [];
 
-let running = 0;
-const queue = queueRaw.map((q: any) => {
-  const duration = Number(q?.services?.duration_minutes ?? 0) || 0;
+    let running = 0;
+    const queue = queueRaw.map((q: any) => {
+      const duration = Number(q?.services?.duration_minutes ?? 0) || 0;
 
-  const item = {
-    id: q.id,
-    status: q.status,
-    created_at: q.created_at,
-    eta_minutes: running, // ETA before this person
-    customer: q.customers || { first_name: "?", last_name: "?" },
-    service: q.services || { name: "Service", duration_minutes: duration }
-  };
+      const item = {
+        id: q.id,
+        status: q.status,
+        created_at: q.created_at,
+        eta_minutes: running, // ETA before this person
+        customer: q.customers || { first_name: "?", last_name: "?" },
+        service: q.services || { name: "Service", duration_minutes: duration }
+      };
 
-  running += duration;
-  return item;
-});
+      running += duration;
+      return item;
+    });
 
-    // 3) Load ads for this shop (active only)
+    // 3) Load ads for this shop (active only) + include video_url + is_active
     const adsRes = await fetch(
-      `${supabaseUrl}/rest/v1/ads?shop_id=eq.${shopId}&is_active=eq.true&select=id,title,image_url&order=created_at.desc&limit=10`,
+      `${supabaseUrl}/rest/v1/ads?shop_id=eq.${shopId}&is_active=eq.true&select=id,title,image_url,video_url,is_active,created_at&order=created_at.desc&limit=10`,
       { headers, cache: "no-store" }
     );
     const adsJson = await adsRes.json();
