@@ -34,15 +34,24 @@ export async function GET(request: Request) {
     );
     const queueJson = await queueRes.json();
 
-    const queue = Array.isArray(queueJson)
-      ? queueJson.map((q: any) => ({
-          id: q.id,
-          status: q.status,
-          created_at: q.created_at,
-          customer: q.customers || { first_name: "?", last_name: "?" },
-          service: q.services || { name: "Service" }
-        }))
-      : [];
+const queueRaw = Array.isArray(queueJson) ? queueJson : [];
+
+let running = 0;
+const queue = queueRaw.map((q: any) => {
+  const duration = Number(q?.services?.duration_minutes ?? 0) || 0;
+
+  const item = {
+    id: q.id,
+    status: q.status,
+    created_at: q.created_at,
+    eta_minutes: running, // ETA before this person
+    customer: q.customers || { first_name: "?", last_name: "?" },
+    service: q.services || { name: "Service", duration_minutes: duration }
+  };
+
+  running += duration;
+  return item;
+});
 
     // 3) Load ads for this shop (active only)
     const adsRes = await fetch(
