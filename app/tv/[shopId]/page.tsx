@@ -1,25 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type QueueEntry = {
   id: string;
   status: string;
   created_at: string;
   eta_minutes: number;
-  customer: {
-    first_name: string;
-    last_name: string;
-  };
-  service: {
-    name: string;
-  };
+  customer: { first_name: string; last_name: string };
+  service: { name: string; duration_minutes?: number };
 };
 
 type Ad = {
   id: string;
-  title: string;
+  title: string | null;
   image_url: string | null;
+  video_url: string | null;
+  is_active: boolean;
 };
 
 export default function TVPage({ params }: { params: { shopId: string } }) {
@@ -28,80 +25,53 @@ export default function TVPage({ params }: { params: { shopId: string } }) {
   const [queue, setQueue] = useState<QueueEntry[]>([]);
   const [ads, setAds] = useState<Ad[]>([]);
   const [adIndex, setAdIndex] = useState(0);
-
-  // TV settings (from DB via /api/tv)
   const [split, setSplit] = useState(70);
   const [rotateSec, setRotateSec] = useState(10);
 
-  const [err, setErr] = useState<string | null>(null);
+  const activeAds = useMemo(
+    () => (ads || []).filter((a) => a.is_active),
+    [ads]
+  );
 
-  // Fetch queue + TV config
   async function load() {
-    try {
-      const res = await fetch(`/api/tv?shopId=${shopId}`, { cache: "no-store" });
-      const text = await res.text();
+    const res = await fetch(`/api/tv?shopId=${shopId}`, { cache: "no-store" });
+    const json = await res.json();
 
-      let json: any;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        throw new Error("TV API returned HTML (route missing or server error).");
-      }
-
-      if (!res.ok) throw new Error(json?.error || "Failed to load TV data");
-
-      setQueue(json.queue || []);
-      setAds(json.ads || []);
-
-      // Clamp split and rotation so TV never breaks
-      const s = Number(json.tv_left_percent ?? 70);
-      const r = Number(json.tv_ad_rotation_seconds ?? 10);
-
-      const sClamped = Math.min(90, Math.max(30, Number.isFinite(s) ? s : 70));
-      const rClamped = Math.min(60, Math.max(3, Number.isFinite(r) ? r : 10));
-
-      setSplit(sClamped);
-      setRotateSec(rClamped);
-
-      setErr(null);
-    } catch (e: any) {
-      setErr(e?.message || "Unknown error");
-    }
+    setQueue(json.queue || []);
+    setAds(json.ads || []);
+    setSplit(json.tv_left_percent || 70);
+    setRotateSec(json.tv_ad_rotation_seconds || 10);
   }
 
-  // Auto refresh queue + settings
+  // Auto refresh queue + config
   useEffect(() => {
     load();
     const i = setInterval(load, 3000);
     return () => clearInterval(i);
   }, [shopId]);
 
-  // Rotate ads (rebuild interval when rotateSec changes)
+  // Rotate ads
   useEffect(() => {
-    if (!ads.length) return;
-
-    const i = setInterval(() => {
-      setAdIndex((x) => (x + 1) % ads.length);
-    }, rotateSec * 1000);
-
+    if (!activeAds.length) return;
+    const i = setInterval(
+      () => setAdIndex((x) => (x + 1) % activeAds.length),
+      Math.max(3, rotateSec) * 1000
+    );
     return () => clearInterval(i);
-  }, [ads, rotateSec]);
+  }, [activeAds.length, rotateSec]);
 
-  // Keep ad index valid if ads length changes
+  // Keep index safe if ads change
   useEffect(() => {
-    if (adIndex >= ads.length) setAdIndex(0);
-  }, [ads.length, adIndex]);
+    if (!activeAds.length) setAdIndex(0);
+    else if (adIndex >= activeAds.length) setAdIndex(0);
+  }, [activeAds.length]);
+
+  const currentAd = activeAds[adIndex];
 
   return (
     <main style={page}>
       <div style={{ ...left, width: `${split}%` }}>
         <h1 style={title}>Now Serving</h1>
-
-        {err && (
-          <div style={errorBox}>
-            <b>TV error:</b> {err}
-          </div>
-        )}
 
         {queue.length === 0 && <div style={empty}>No customers in queue</div>}
 
@@ -109,39 +79,56 @@ export default function TVPage({ params }: { params: { shopId: string } }) {
           <div key={q.id} style={row}>
             <div style={pos}>{i + 1}</div>
 
-            <div>
+            <div style={{ minWidth: 0 }}>
               <div style={name}>
-                {q.customer.first_name}{" "}
-                {q.customer.last_name ? q.customer.last_name[0] : ""}
+                {q.customer.first_name} {q.customer.last_name?.[0] || ""}
               </div>
-
               <div style={service}>
                 {q.service.name} • ETA {q.eta_minutes}m
               </div>
             </div>
 
-            <div style={status}>{(q.status || "").toUpperCase()}</div>
+            <div style={statusPill(q.status)}>
+              {q.status.toUpperCase()}
+            </div>
           </div>
         ))}
       </div>
 
       <div style={{ ...right, width: `${100 - split}%` }}>
-        {ads.length === 0 ? (
+        {!currentAd ? (
           <div style={adPlaceholder}>
             <div>YOUR AD HERE</div>
             <div style={{ fontSize: 18, opacity: 0.6 }}>Sponsored space</div>
           </div>
-        ) : (
+        ) : currentAd.video_url ? (
           <div style={adBox}>
-            {ads[adIndex]?.image_url ? (
-              <img
-                src={ads[adIndex].image_url!}
-                alt={ads[adIndex].title}
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            ) : (
-              <div style={adText}>{ads[adIndex]?.title}</div>
-            )}
+            <video
+              key={currentAd.id} // forces restart on rotate
+              src={currentAd.video_url}
+              style={adMedia}
+              autoPlay
+              muted
+              loop
+              playsInline
+            />
+            <div style={adBadge}>AD</div>
+          </div>
+        ) : currentAd.image_url ? (
+          <div style={adBox}>
+            <img
+              src={currentAd.image_url}
+              alt={currentAd.title || "ad"}
+              style={adMedia}
+            />
+            <div style={adBadge}>AD</div>
+          </div>
+        ) : (
+          <div style={adTextWrap}>
+            <div style={adText}>{currentAd.title || "Sponsored"}</div>
+            <div style={{ opacity: 0.6, marginTop: 8, fontSize: 18 }}>
+              Sponsored space
+            </div>
           </div>
         )}
       </div>
@@ -168,21 +155,15 @@ const right: React.CSSProperties = {
   background: "#0b0b0b",
   display: "flex",
   alignItems: "center",
-  justifyContent: "center"
+  justifyContent: "center",
+  position: "relative"
 };
 
 const title: React.CSSProperties = {
   fontSize: "3rem",
-  marginBottom: 24
-};
-
-const errorBox: React.CSSProperties = {
-  background: "rgba(255,0,0,0.10)",
-  border: "1px solid rgba(255,0,0,0.25)",
-  padding: 14,
-  borderRadius: 16,
-  marginBottom: 16,
-  maxWidth: 700
+  marginBottom: 24,
+  fontWeight: 950,
+  letterSpacing: "-0.02em"
 };
 
 const row: React.CSSProperties = {
@@ -196,22 +177,57 @@ const row: React.CSSProperties = {
 const pos: React.CSSProperties = {
   fontSize: 32,
   fontWeight: 900,
-  width: 50
+  width: 50,
+  opacity: 0.95
 };
 
 const name: React.CSSProperties = {
   fontSize: 26,
-  fontWeight: 700
+  fontWeight: 850,
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  maxWidth: 760
 };
 
 const service: React.CSSProperties = {
-  opacity: 0.7
+  opacity: 0.7,
+  marginTop: 4
 };
 
-const status: React.CSSProperties = {
-  marginLeft: "auto",
-  fontWeight: 800,
-  opacity: 0.8
+const statusPill = (status: string): React.CSSProperties => {
+  const s = (status || "").toLowerCase();
+  const base: React.CSSProperties = {
+    marginLeft: "auto",
+    fontWeight: 950,
+    padding: "8px 12px",
+    borderRadius: 999,
+    fontSize: 14,
+    letterSpacing: "0.06em"
+  };
+
+  if (s === "checked_in" || s === "arrived")
+    return {
+      ...base,
+      background: "rgba(0,255,120,0.10)",
+      border: "1px solid rgba(0,255,120,0.25)",
+      color: "#bfffe1"
+    };
+
+  if (s === "queued")
+    return {
+      ...base,
+      background: "rgba(77,163,255,0.14)",
+      border: "1px solid rgba(77,163,255,0.35)",
+      color: "#cfe9ff"
+    };
+
+  return {
+    ...base,
+    background: "rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,255,255,0.16)",
+    color: "white"
+  };
 };
 
 const empty: React.CSSProperties = {
@@ -222,18 +238,43 @@ const empty: React.CSSProperties = {
 const adPlaceholder: React.CSSProperties = {
   textAlign: "center",
   fontSize: 36,
-  fontWeight: 900,
-  opacity: 0.4
+  fontWeight: 950,
+  opacity: 0.35
 };
 
 const adBox: React.CSSProperties = {
   width: "100%",
-  height: "100%"
+  height: "100%",
+  position: "relative"
+};
+
+const adMedia: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover"
+};
+
+const adBadge: React.CSSProperties = {
+  position: "absolute",
+  top: 14,
+  right: 14,
+  background: "rgba(0,0,0,0.45)",
+  border: "1px solid rgba(255,255,255,0.18)",
+  padding: "6px 10px",
+  borderRadius: 999,
+  fontWeight: 900,
+  letterSpacing: "0.12em",
+  fontSize: 12,
+  opacity: 0.9
+};
+
+const adTextWrap: React.CSSProperties = {
+  textAlign: "center",
+  padding: 24
 };
 
 const adText: React.CSSProperties = {
   fontSize: 48,
-  fontWeight: 900,
-  textAlign: "center",
-  padding: 24
+  fontWeight: 950,
+  lineHeight: 1.05
 };
