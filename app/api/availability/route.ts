@@ -9,6 +9,14 @@ function addMinutes(d: Date, mins: number) {
   return new Date(d.getTime() + mins * 60 * 1000);
 }
 
+// accepts "09:00" or "09:00:00"
+function parseHHMM(time: string) {
+  const parts = String(time || "").split(":");
+  const hh = toInt(parts[0], 9);
+  const mm = toInt(parts[1], 0);
+  return { hh, mm };
+}
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -24,6 +32,14 @@ export async function GET(request: Request) {
       );
     }
 
+    // basic date check
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return NextResponse.json(
+        { error: "Invalid date format (expected YYYY-MM-DD)" },
+        { status: 400 }
+      );
+    }
+
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
     const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
@@ -33,18 +49,15 @@ export async function GET(request: Request) {
       "Content-Type": "application/json"
     };
 
-    // 1) Load shop hours
+    // 0) Load shop name (just for response)
     const shopRes = await fetch(
-      `${supabaseUrl}/rest/v1/shops?id=eq.${shopId}&select=id,name,open_time,close_time&limit=1`,
+      `${supabaseUrl}/rest/v1/shops?id=eq.${shopId}&select=id,name&limit=1`,
       { headers, cache: "no-store" }
     );
     const shopJson = await shopRes.json();
     const shop = Array.isArray(shopJson) ? shopJson[0] : null;
 
-    const openTime = String(shop?.open_time || "09:00"); // "HH:mm"
-    const closeTime = String(shop?.close_time || "18:00");
-
-    // 2) Load service duration
+    // 1) Load service duration
     const svcRes = await fetch(
       `${supabaseUrl}/rest/v1/services?id=eq.${serviceId}&select=id,duration_minutes,name&limit=1`,
       { headers, cache: "no-store" }
@@ -55,14 +68,41 @@ export async function GET(request: Request) {
     const duration = toInt(svc?.duration_minutes, 20);
     const step = 10; // slot granularity (mins) for MVP
 
-    // 3) Compute day start/end in UTC (simple MVP)
-    // We’ll treat date input as local-like but stored as ISO. Good enough for prototype.
+    // 2) Compute the day window as [date 00:00, nextDate 00:00)
     const dayStart = new Date(`${date}T00:00:00.000Z`);
-    const dayEnd = new Date(`${date}T23:59:59.999Z`);
+    const dayEnd = new Date(dayStart);
+    dayEnd.setUTCDate(dayEnd.getUTCDate() + 1);
+
+    // day_of_week: 0=Sun..6=Sat
+    const dayOfWeek = dayStart.getUTCDay();
+
+    // 3) Load shop hours from shop_hours (this is the important fix)
+    const hoursRes = await fetch(
+      `${supabaseUrl}/rest/v1/shop_hours?shop_id=eq.${shopId}&day_of_week=eq.${dayOfWeek}&select=open_time,close_time,is_closed&limit=1`,
+      { headers, cache: "no-store" }
+    );
+    const hoursJson = await hoursRes.json();
+    const hours = Array.isArray(hoursJson) ? hoursJson[0] : null;
+
+    if (!hours || hours?.is_closed) {
+      return NextResponse.json({
+        ok: true,
+        shop: { id: shopId, name: shop?.name || "" },
+        service: { id: serviceId, name: svc?.name || "", duration_minutes: duration },
+        date,
+        open_time: null,
+        close_time: null,
+        step_minutes: step,
+        slots: []
+      });
+    }
+
+    const openTime = String(hours.open_time);   // e.g. "09:00:00"
+    const closeTime = String(hours.close_time); // e.g. "18:00:00"
 
     // 4) Fetch existing bookings for that day
     const bookingsRes = await fetch(
-      `${supabaseUrl}/rest/v1/bookings?shop_id=eq.${shopId}&status=eq.booked&start_at=gte.${dayStart.toISOString()}&start_at=lte.${dayEnd.toISOString()}&select=id,start_at,end_at`,
+      `${supabaseUrl}/rest/v1/bookings?shop_id=eq.${shopId}&status=eq.booked&start_at=gte.${dayStart.toISOString()}&start_at=lt.${dayEnd.toISOString()}&select=id,start_at,end_at&order=start_at.asc`,
       { headers, cache: "no-store" }
     );
     const bookingsJson = await bookingsRes.json();
@@ -80,8 +120,8 @@ export async function GET(request: Request) {
     };
 
     // 5) Build available slots between open and close
-    const [oh, om] = openTime.split(":").map((x) => toInt(x, 0));
-    const [ch, cm] = closeTime.split(":").map((x) => toInt(x, 0));
+    const { hh: oh, mm: om } = parseHHMM(openTime);
+    const { hh: ch, mm: cm } = parseHHMM(closeTime);
 
     const openAt = new Date(dayStart);
     openAt.setUTCHours(oh, om, 0, 0);
@@ -89,7 +129,11 @@ export async function GET(request: Request) {
     const closeAt = new Date(dayStart);
     closeAt.setUTCHours(ch, cm, 0, 0);
 
-    const slots: { start: string; end: string }[] = [];
+    const slots: { start: string; end: string; label: string }[] = [];
+
+    const pad2 = (n: number) => String(n).padStart(2, "0");
+    const labelFromUTC = (dt: Date) => `${pad2(dt.getUTCHours())}:${pad2(dt.getUTCMinutes())}`;
+
     for (
       let cur = new Date(openAt);
       cur.getTime() + duration * 60 * 1000 <= closeAt.getTime();
@@ -99,7 +143,11 @@ export async function GET(request: Request) {
       const end = addMinutes(cur, duration);
 
       if (!overlaps(start, end)) {
-        slots.push({ start: start.toISOString(), end: end.toISOString() });
+        slots.push({
+          start: start.toISOString(),
+          end: end.toISOString(),
+          label: labelFromUTC(start)
+        });
       }
     }
 
@@ -108,6 +156,7 @@ export async function GET(request: Request) {
       shop: { id: shopId, name: shop?.name || "" },
       service: { id: serviceId, name: svc?.name || "", duration_minutes: duration },
       date,
+      day_of_week: dayOfWeek,
       open_time: openTime,
       close_time: closeTime,
       step_minutes: step,
