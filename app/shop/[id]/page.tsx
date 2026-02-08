@@ -15,7 +15,7 @@ type Shop = {
   suburb: string;
 };
 
-type Slot = { start: string; end: string };
+type Slot = { start: string; end: string; label?: string };
 
 export default function ShopPage({ params }: { params: { id: string } }) {
   const shopId = params.id;
@@ -53,8 +53,29 @@ export default function ShopPage({ params }: { params: { id: string } }) {
   const [busy, setBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
+  function fmtTime(iso: string) {
+    try {
+      return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    } catch {
+      return "";
+    }
+  }
+
+  function fmtDate(isoDate: string) {
+    try {
+      return new Date(`${isoDate}T00:00:00`).toLocaleDateString([], {
+        weekday: "short",
+        day: "2-digit",
+        month: "short"
+      });
+    } catch {
+      return isoDate;
+    }
+  }
+
   function resetForm() {
-    setServiceId(services?.[0]?.id || "");
+    const firstSvc = services?.[0]?.id || "";
+    setServiceId(firstSvc);
     setFirstName("");
     setLastName("");
     setPhone("");
@@ -95,7 +116,7 @@ export default function ShopPage({ params }: { params: { id: string } }) {
     };
   }, [shopId]);
 
-  // Live wait time from TV API (sums durations via ETA already)
+  // Live wait time from TV API
   useEffect(() => {
     let cancelled = false;
 
@@ -111,7 +132,6 @@ export default function ShopPage({ params }: { params: { id: string } }) {
           return;
         }
 
-        // queue items already have eta_minutes; compute last person end ETA
         const last = q[q.length - 1];
         const lastEta = Number(last?.eta_minutes ?? 0) || 0;
         const lastDur = Number(last?.service?.duration_minutes ?? 0) || 0;
@@ -206,13 +226,13 @@ export default function ShopPage({ params }: { params: { id: string } }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Failed to join queue");
 
-      setToast("✅ Added to queue!");
+      setToast(`✅ You’re in the queue — wait ~${waitMins}m`);
       closeModal();
     } catch (e: any) {
       setErr(e?.message || "Unknown error");
     } finally {
       setBusy(false);
-      setTimeout(() => setToast(null), 1800);
+      setTimeout(() => setToast(null), 2000);
     }
   }
 
@@ -222,9 +242,9 @@ export default function ShopPage({ params }: { params: { id: string } }) {
       setErr(null);
 
       if (!serviceId) throw new Error("Please select a service.");
+      if (!slotStart) throw new Error("Please select a time.");
       if (!firstName.trim() || !lastName.trim() || !phone.trim())
         throw new Error("Please enter First name, Last name and Phone.");
-      if (!slotStart) throw new Error("Please select a time.");
 
       const res = await fetch(`/api/bookings`, {
         method: "POST",
@@ -242,13 +262,13 @@ export default function ShopPage({ params }: { params: { id: string } }) {
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error || "Booking failed");
 
-      setToast("✅ Booking confirmed!");
+      setToast(`✅ Booking confirmed — ${fmtDate(date)} at ${fmtTime(slotStart)}`);
       closeModal();
     } catch (e: any) {
       setErr(e?.message || "Unknown error");
     } finally {
       setBusy(false);
-      setTimeout(() => setToast(null), 1800);
+      setTimeout(() => setToast(null), 2200);
     }
   }
 
@@ -258,7 +278,7 @@ export default function ShopPage({ params }: { params: { id: string } }) {
     <main style={page}>
       <div style={{ width: "100%", maxWidth: 980 }}>
         <a href="/" style={back}>
-          ← Back
+          ← Shops
         </a>
 
         {loading ? (
@@ -281,7 +301,12 @@ export default function ShopPage({ params }: { params: { id: string } }) {
                 <div style={pill}>
                   Live Wait: <b style={{ marginLeft: 6 }}>{waitMins}m</b>
                 </div>
-                <a href={`/tv/${shopId}`} target="_blank" rel="noreferrer" style={{ ...pill, textDecoration: "none" }}>
+                <a
+                  href={`/tv/${shopId}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  style={{ ...pill, textDecoration: "none" }}
+                >
                   TV View →
                 </a>
               </div>
@@ -294,17 +319,17 @@ export default function ShopPage({ params }: { params: { id: string } }) {
                   <div style={tileBadge}>WAIT {waitMins}m</div>
                 </div>
                 <div style={tileDesc}>
-                  Walk-in style. Get a spot instantly and check-in when you arrive.
+                  Walk-in style. Enter details and get your spot instantly.
                 </div>
               </button>
 
               <button onClick={openBook} style={tileGhost} type="button">
                 <div style={tileTop}>
                   <div style={tileTitle}>Book Appointment</div>
-                  <div style={tileBadgeGhost}>Choose time</div>
+                  <div style={tileBadgeGhost}>Pick date/time</div>
                 </div>
                 <div style={tileDesc}>
-                  Pick service + date/time. We’ll hold the slot for you.
+                  Choose service + date/time, then confirm your booking.
                 </div>
               </button>
             </div>
@@ -325,6 +350,7 @@ export default function ShopPage({ params }: { params: { id: string } }) {
                   </div>
                   <div style={{ opacity: 0.7, marginTop: 6 }}>
                     {shop?.name} • {shop?.suburb}
+                    {open === "queue" ? ` • Wait ~${waitMins}m` : ""}
                   </div>
                 </div>
                 <button onClick={closeModal} style={xBtn} type="button">
@@ -339,6 +365,7 @@ export default function ShopPage({ params }: { params: { id: string } }) {
               )}
 
               <div style={formGrid}>
+                {/* SERVICE always first */}
                 <div style={field}>
                   <div style={label}>Service</div>
                   <select
@@ -354,66 +381,100 @@ export default function ShopPage({ params }: { params: { id: string } }) {
                   </select>
                 </div>
 
+                {/* BOOKING: date/time first */}
+                {open === "book" && (
+                  <>
+                    <div style={row2}>
+                      <div style={field}>
+                        <div style={label}>Date</div>
+                        <input
+                          type="date"
+                          value={date}
+                          onChange={(e) => setDate(e.target.value)}
+                          style={input}
+                        />
+                      </div>
+
+                      <div style={field}>
+                        <div style={label}>Time</div>
+                        <select
+                          value={slotStart}
+                          onChange={(e) => setSlotStart(e.target.value)}
+                          style={select}
+                        >
+                          {slots.length === 0 ? (
+                            <option value="">No times available</option>
+                          ) : (
+                            slots.map((s) => (
+                              <option key={s.start} value={s.start}>
+                                {s.label || fmtTime(s.start)}
+                              </option>
+                            ))
+                          )}
+                        </select>
+                      </div>
+                    </div>
+
+                    <div style={summary}>
+                      <div style={{ opacity: 0.7 }}>Selected</div>
+                      <div style={{ fontWeight: 950, marginTop: 6 }}>
+                        {selectedService?.name || "Service"}
+                        {slotStart ? ` • ${fmtDate(date)} ${fmtTime(slotStart)}` : ""}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* DETAILS (queue + booking) */}
                 <div style={row2}>
                   <div style={field}>
                     <div style={label}>First name</div>
-                    <input value={firstName} onChange={(e) => setFirstName(e.target.value)} style={input} placeholder="Adam" />
+                    <input
+                      value={firstName}
+                      onChange={(e) => setFirstName(e.target.value)}
+                      style={input}
+                      placeholder="Adam"
+                    />
                   </div>
                   <div style={field}>
                     <div style={label}>Last name</div>
-                    <input value={lastName} onChange={(e) => setLastName(e.target.value)} style={input} placeholder="Smith" />
+                    <input
+                      value={lastName}
+                      onChange={(e) => setLastName(e.target.value)}
+                      style={input}
+                      placeholder="Smith"
+                    />
                   </div>
                 </div>
 
                 <div style={field}>
                   <div style={label}>Phone</div>
-                  <input value={phone} onChange={(e) => setPhone(e.target.value)} style={input} placeholder="04xx xxx xxx" inputMode="tel" />
+                  <input
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    style={input}
+                    placeholder="04xx xxx xxx"
+                    inputMode="tel"
+                  />
                 </div>
 
-                {open === "book" && (
-                  <div style={row2}>
-                    <div style={field}>
-                      <div style={label}>Date</div>
-                      <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={input} />
-                    </div>
-
-                    <div style={field}>
-                      <div style={label}>Time</div>
-                      <select
-                        value={slotStart}
-                        onChange={(e) => setSlotStart(e.target.value)}
-                        style={select}
-                      >
-                        {slots.length === 0 ? (
-                          <option value="">No times available</option>
-                        ) : (
-                          slots.map((s) => (
-                            <option key={s.start} value={s.start}>
-                              {new Date(s.start).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                            </option>
-                          ))
-                        )}
-                      </select>
+                {/* QUEUE summary */}
+                {open === "queue" && (
+                  <div style={summary}>
+                    <div style={{ opacity: 0.7 }}>You’ll get</div>
+                    <div style={{ fontWeight: 950, marginTop: 6 }}>
+                      {selectedService?.name || "Service"} • Wait ~{waitMins}m
                     </div>
                   </div>
                 )}
 
-                <div style={summary}>
-                  <div style={{ opacity: 0.7 }}>Selected</div>
-                  <div style={{ fontWeight: 950, marginTop: 6 }}>
-                    {selectedService?.name || "Service"}{" "}
-                    {open === "queue"
-                      ? `• Wait ~${waitMins}m`
-                      : slotStart
-                      ? `• ${new Date(slotStart).toLocaleString()}`
-                      : ""}
-                  </div>
-                </div>
-
                 <button
                   onClick={open === "queue" ? submitQueue : submitBooking}
                   disabled={busy || (open === "book" && !slotStart)}
-                  style={{ ...cta, opacity: busy || (open === "book" && !slotStart) ? 0.6 : 1 }}
+                  style={{
+                    ...cta,
+                    opacity: busy || (open === "book" && !slotStart) ? 0.6 : 1
+                  }}
                   type="button"
                 >
                   {busy
@@ -431,7 +492,7 @@ export default function ShopPage({ params }: { params: { id: string } }) {
   );
 }
 
-/* ===== styles (clean iOS-ish, black + electric blue) ===== */
+/* ===== styles ===== */
 
 const page: React.CSSProperties = {
   minHeight: "100vh",
@@ -452,7 +513,8 @@ const back: React.CSSProperties = {
 };
 
 const hero: React.CSSProperties = {
-  background: "linear-gradient(180deg, rgba(77,163,255,0.10), rgba(255,255,255,0.04))",
+  background:
+    "linear-gradient(180deg, rgba(77,163,255,0.10), rgba(255,255,255,0.04))",
   border: "1px solid rgba(255,255,255,0.10)",
   padding: 18,
   borderRadius: 20,
@@ -462,10 +524,19 @@ const hero: React.CSSProperties = {
   alignItems: "center"
 };
 
-const heroTitle: React.CSSProperties = { fontSize: "1.8rem", fontWeight: 950, letterSpacing: "-0.02em" };
+const heroTitle: React.CSSProperties = {
+  fontSize: "1.8rem",
+  fontWeight: 950,
+  letterSpacing: "-0.02em"
+};
 const heroSub: React.CSSProperties = { opacity: 0.75, marginTop: 6 };
 
-const pillRow: React.CSSProperties = { display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" };
+const pillRow: React.CSSProperties = {
+  display: "flex",
+  gap: 10,
+  flexWrap: "wrap",
+  justifyContent: "flex-end"
+};
 
 const pill: React.CSSProperties = {
   background: "rgba(255,255,255,0.06)",
@@ -503,7 +574,12 @@ const tileGhost: React.CSSProperties = {
   background: "rgba(255,255,255,0.05)"
 };
 
-const tileTop: React.CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 };
+const tileTop: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12
+};
 const tileTitle: React.CSSProperties = { fontSize: 20, fontWeight: 950 };
 const tileDesc: React.CSSProperties = { marginTop: 10, opacity: 0.75, lineHeight: 1.4 };
 
@@ -567,7 +643,12 @@ const modal: React.CSSProperties = {
   backdropFilter: "blur(14px)"
 };
 
-const modalHead: React.CSSProperties = { display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" };
+const modalHead: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 12,
+  alignItems: "flex-start"
+};
 const modalTitle: React.CSSProperties = { fontSize: 22, fontWeight: 950, letterSpacing: "-0.02em" };
 
 const xBtn: React.CSSProperties = {
@@ -597,10 +678,7 @@ const input: React.CSSProperties = {
   fontWeight: 800
 };
 
-const select: React.CSSProperties = {
-  ...input,
-  appearance: "none"
-};
+const select: React.CSSProperties = { ...input, appearance: "none" };
 
 const summary: React.CSSProperties = {
   background: "rgba(255,255,255,0.05)",
